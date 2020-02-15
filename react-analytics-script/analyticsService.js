@@ -26,16 +26,18 @@ class AnalyticsService {
   resetAnalyticaQueue() {
     this.analyticsQueue = [];
   }
-
+  beforeWidowUnload() {
+    if (this.analyticsQueue.length > 0) {
+      this.sendBeats(undefined, true);
+    }
+  }
   verifyPayload(payload = {}) {
     const hasValidProp = key =>
       payload.hasOwnProperty(key) && typeof payload[key] === 'string';
     const expectedPayloadKeys = [
       'actionCategory',
       'actionName',
-      'clinicId',
-      'startDateTime',
-      'userId'
+      'startDateTime'
     ];
     const isOk = expectedPayloadKeys.every(hasValidProp);
 
@@ -43,17 +45,21 @@ class AnalyticsService {
   }
   pushToQueue(payload) {
     this.analyticsQueue.push(payload);
+    let forceSendRequested = ['logout'].includes(
+      payload.actionName.toLowerCase()
+    );
+    if (forceSendRequested) this.sendBeats(undefined, true);
   }
 
   deepClone(payload) {
     return JSON.parse(JSON.stringify(payload));
   }
-  sendBeats(retryCount = this.retryCount) {
+  sendBeats(retryCount = this.retryCount, forcePush = false, callbacks = {}) {
     let fulfilsPreflightCriteria =
         (this.analyticsQueue || []).length >= this.preflightCriteria,
       triedTimes = 1,
       success = false;
-    if (!fulfilsPreflightCriteria) {
+    if (!forcePush && !fulfilsPreflightCriteria) {
       this.initializeTimer();
       return;
     }

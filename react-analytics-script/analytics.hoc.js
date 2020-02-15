@@ -1,5 +1,5 @@
 import React from 'react';
-import { analyticsService } from '../services/analyticsWorkerService';
+import { sendAnalytics } from '../services/analyticsService';
 
 export default function WithAnalytics(WrappedComponent) {
   return class AnalyticsWrapper extends React.Component {
@@ -29,56 +29,5 @@ export default function WithAnalytics(WrappedComponent) {
         <WrappedComponent {...this.props} sendAnalytics={this.sendAnalytics} />
       );
     }
-  };
-}
-
-/**
- * @param {{
- *  actionName: string;
- *  actionCategory: string;
- *  startDateTime: Date
- * }} [analyticsPayload={}]
- */
-export function sendAnalytics(analyticsPayload = {}) {
-  // must bind to component
-  const validFields = ['actionName', 'actionCategory', 'startDateTime'];
-  const isValidPayload = validFields.every(key =>
-    analyticsPayload.hasOwnProperty(key)
-  );
-  if (!isValidPayload) {
-    console.error('Invalid analytics payload, required fields', validFields);
-    return;
-  }
-  const analyticsProps = this.props.analytics;
-  const analytics = {
-    actionCategory: analyticsPayload.actionCategory,
-    actionName: analyticsPayload.actionName,
-    actionTab: analyticsProps.hash,
-    clinicId: analyticsProps.clinicId,
-    endDateTime: analyticsPayload.endDateTime,
-    startDateTime: analyticsPayload.startDateTime,
-    userId: analyticsProps.userId
-  };
-  analyticsService.sendAnalytics(analytics);
-}
-
-/**
- * @export
- * @param {string} actionCategory
- * @param {string} actionName
- * @param {string} startDateTime
- * @param {string} [endDateTime]
- */
-export function makeAnalyticsPayload(
-  actionCategory,
-  actionName,
-  startDateTime,
-  endDateTime
-) {
-  return {
-    actionCategory,
-    actionName,
-    endDateTime,
-    startDateTime
   };
 }

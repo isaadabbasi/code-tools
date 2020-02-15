@@ -1,15 +1,39 @@
-importScripts('./analyticsService.js');
-let analyticsService;
+importScripts('./processQ.js');
+let processQueue;
 
+function inject(lxVar, injectables) {
+	for(const [key, value] of Object.entries(injectables)) {
+    eval(`${lxVar}.${key} = ${value}`);
+	}
+}
+function filterInjectables(payload) {
+  const injectables = {};
+	for(const [key, value] of Object.entries(payload)) {
+    if(typeof value === 'string' && value.substring(0, 8) === 'function') 
+      injectables[key] = value;
+	}
+	return injectables;
+}
 self.onmessage = function(e) {
-  const payload = JSON.parse(e.data);
-  switch (payload.type) {
+  const action = JSON.parse(e.data);
+  console.log('payload: [worker]:', action);
+  switch (action.type) {
     case 'INIT_SERVICE': {
-      analyticsService = new AnalyticsService(payload.data);
+      if (action.data) self.close(); //useless;
+      const config = action.payload;
+      processQueue = new ProcessQ(self, config);      
+      inject('processQueue', filterInjectables(config));
+      
+      console.log('analytics ispayloadvalid: ', processQueue.isPayloadValid);
+
+      return;
+    }
+    case 'ON_BEFORE_UNLOAD': {
+      processQueue.beforeWidowUnload();
       return;
     }
     default: {
-      analyticsService.addToQueue(payload);
+      processQueue.processEvent(action.payload);
       return;
     }
   }
