@@ -37,28 +37,31 @@ class WorkerService {
     return this.registry.get(token);
   }
 }
-class Service {
+class ProcessQueue {
   constructor(workerService, pathToScript, config) {
     this.workerService = workerService;
     this.token = workerService.register(pathToScript, config);
   }
-  send(type, payload) {
-    this.workerService.sendMessage(this.token, type, payload);
+  send(payload) {
+    this.workerService.sendMessage(this.token, null, payload);
+  }
+  set onmessage(fn) {
+    this.workerService.getWorkerByToken(this.token).onmessage = fn;
   }
 }
 
 const MakeService = (function() {
   const workerService = new WorkerService();
   return function(pathToScript, config) {
-    return new Service(workerService, pathToScript, config);
+    return new ProcessQueue(workerService, pathToScript, config);
   };
 })();
 
+// TODO - Inline Worker.
 export const analyticsService = MakeService('../scripts/analyticsWorker.js', {
   eventsBuffer: 3,
-  ttl: 20,
-  retryCount: 1,
   url: URL_ANALYTICS,
+
   isPayloadValid: function(payload = {}) {
     const required = ['actionName', 'actionCategory', 'startDateTime'];
     const isValidPayload = required.every(key => payload.hasOwnProperty(key));
@@ -66,10 +69,6 @@ export const analyticsService = MakeService('../scripts/analyticsWorker.js', {
   }
 });
 
-setInterval(function() {
-  analyticsService.send('', {
-    'actionName':  Date.now().toString(),
-    'startDateTime':  Date.now().toString(),
-    'actionCategory': Date.now().toString(),
-  });
-}, 5000)
+analyticsService.onmessage = function(e) {
+  console.log('onmessage = :', e);
+};

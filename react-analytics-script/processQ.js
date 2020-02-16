@@ -2,7 +2,7 @@ const APIService = {
   url: '',
   post: function(data) {
     const url = APIService.url;
-    return fetch(url, {
+    return fetch('http://localhost:4000', {
       body: JSON.stringify(data),
       method: 'POST'
     }).then(res => res && res.json());
@@ -10,18 +10,21 @@ const APIService = {
 };
 
 class ProcessQ {
-  WorkerScope;
   errorQueue = [];
   eventsBuffer; // queue must have this length before sending to server
+  interval; // setTimeout seconds
   queue = [];
-  timeout; // setTimeout instance
-  ttl; // setTimeout seconds
-  constructor(WorkerScope, { ttl = 20, eventsBuffer = 15, retryCount = 1, url = '' }) {
+  retryCount;
+  WorkerScope;
+  constructor(
+    WorkerScope,
+    { interval = 0, eventsBuffer = 15, retryCount = 1, url = '' }
+  ) {
     APIService.url = url;
     this.eventsBuffer = eventsBuffer;
     this.retryCount = retryCount;
-    this.ttl = ttl;
-    this.WorkerScope = WorkerScope; 
+    this.interval = interval * 1000;
+    this.WorkerScope = WorkerScope;
   }
 
   resetAnalyticaQueue() {
@@ -30,38 +33,40 @@ class ProcessQ {
 
   pushToQueue(payload) {
     this.queue.push(payload);
-    // * if timer is enabled, fixedSize push shouldn't be enabled.
     this.postPushToQueue(payload);
-
   }
-  postPushToQueue(payload) {
+  postPushToQueue() {
     // * processCriteria could be one, thats why we need to check it right away.
     const isBufferFull = this.eventsBuffer <= this.queue.length;
-    if (isBufferFull) {
+    const intervalNotSet = this.interval === 0;
+    if (isBufferFull && intervalNotSet) {
       this.sendBeats();
       return;
-    }    
-    // TODO - ['logout'] should be be prop of forced events
-    let forceSendRequested = ['logout'].filter(fEvent => Boolean(payload[fEvent])).length;
-    if (forceSendRequested) this.sendBeats(undefined, true);
+    }
+    // TODO - forced events
   }
 
   deepClone(payload) {
     return JSON.parse(JSON.stringify(payload));
   }
-  sendBeats(retryCount = this.retryCount, forcePush = false) {
+  sendBeats(forcePush = false) {
     const isBufferFull = this.eventsBuffer <= this.queue.length;
 
     if (!forcePush && !isBufferFull) {
-      this.initializeTimer();
+      if (this.interval > 0) this.initializeTimer();
       return;
     }
     const events = this.deepClone(this.queue);
     this.queue = [];
     clearTimeout(this.timeout);
     this.timeout = undefined;
-
-    let triedTimes = 1, success = false;
+    if (APIService.url) this.flight(events);
+    else this.WorkerScope.postMessage(events);
+  }
+  flight(events) {
+    let triedTimes = 1,
+      success = false,
+      retryCount = this.retryCount;
     const upstream = async () => {
       triedTimes = triedTimes + 1;
       try {
@@ -81,8 +86,7 @@ class ProcessQ {
       clearTimeout(this.timeout);
       this.timeout = undefined;
     }
-    const inSeconds = this.ttl * 1000;
-    const timeout = fn => setTimeout(fn.bind(this), inSeconds);
+    const timeout = fn => setTimeout(fn.bind(this), this.interval);
     this.timeout = timeout(this.sendBeats);
   }
   pushSanitizedErr(name = `UNIDENTIFIED_ERROR`, error) {
@@ -98,8 +102,8 @@ class ProcessQ {
     }
 
     const isFirstPush = this.queue.length === 0;
-
-    if (isFirstPush) this.initializeTimer();
+    const intervalNotSet = this.interval > 0;
+    if (isFirstPush && intervalNotSet) this.initializeTimer();
     this.pushToQueue(payload);
   }
 }
